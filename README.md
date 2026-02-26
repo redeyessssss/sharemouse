@@ -53,9 +53,23 @@ Move mouse to LEFT edge of Laptop 2 → returns to RIGHT edge of Laptop 1
 ## Requirements
 
 - Node.js 16+
-- macOS: Grant Accessibility permissions
-- Linux: X11 display access
-- Windows: Run as Administrator
+
+### Linux (Debian/Ubuntu/Kali)
+```bash
+sudo apt-get install -y libxtst-dev libpng++-dev build-essential
+```
+
+### macOS
+```bash
+xcode-select --install
+# Grant Accessibility permissions in System Preferences
+```
+
+### Windows
+```bash
+npm install --global windows-build-tools
+# Run terminal as Administrator
+```
 
 ## Troubleshooting
 
