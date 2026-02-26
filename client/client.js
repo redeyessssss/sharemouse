@@ -208,10 +208,11 @@ function startHostTracking() {
         client.active = true;
         lastSwitchTime = now;
         
-        // Lock cursor at center of screen (invisible to user)
+        // Move cursor COMPLETELY off-screen (far outside visible area)
+        // This ensures clicks don't register on host screen
         cursorLockedPosition = {
-          x: Math.floor(screenSize.width / 2),
-          y: Math.floor(screenSize.height / 2)
+          x: -1000,  // Far off-screen to the left
+          y: -1000   // Far off-screen to the top
         };
         robot.moveMouse(cursorLockedPosition.x, cursorLockedPosition.y);
         
@@ -219,7 +220,7 @@ function startHostTracking() {
         lastSentPos = { x: entryX, y: entryY };
         
         socket.emit('switch-to-client', { clientId, entryX, entryY });
-        log(`→ Control switched to ${client.position} client (cursor locked)`);
+        log(`→ Control switched to ${client.position} client (cursor off-screen)`);
         break;
       }
     }
