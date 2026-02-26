@@ -166,7 +166,12 @@ async function startClient() {
   const code = await question('\n📋 Enter OTP code: ');
   otp = code.toUpperCase().trim();
   
-  socket = io(SERVER_URL);
+  console.log(`\nConnecting to server: ${SERVER_URL}`);
+  socket = io(SERVER_URL, {
+    reconnection: true,
+    reconnectionDelay: 1000,
+    reconnectionAttempts: 5
+  });
   
   socket.on('connect', () => {
     log('✓ Connected to server');
@@ -184,6 +189,15 @@ async function startClient() {
         process.exit(1);
       }
     });
+  });
+  
+  socket.on('connect_error', (error) => {
+    console.log(`\n✗ Connection error: ${error.message}`);
+    console.log(`\nMake sure:`);
+    console.log(`  1. Server is running on Mac`);
+    console.log(`  2. You set SERVER_URL correctly:`);
+    console.log(`     export SERVER_URL=http://MAC_IP:3002`);
+    console.log(`  3. Both laptops are on same network\n`);
   });
 
   socket.on('position-assigned', (data) => {
@@ -298,6 +312,7 @@ async function main() {
   console.log('\n╔════════════════════════════════════╗');
   console.log('║        MOUSE SHARE CLIENT          ║');
   console.log('╚════════════════════════════════════╝\n');
+  console.log(`Server URL: ${SERVER_URL}\n`);
   console.log('  1. Host (Share your mouse)');
   console.log('  2. Client (Receive control)');
   console.log('  3. Exit\n');

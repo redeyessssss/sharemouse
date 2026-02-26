@@ -158,10 +158,11 @@ io.on('connection', (socket) => {
 });
 
 const PORT = process.env.PORT || 3002;
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, '0.0.0.0', () => {
   console.log(`\n╔════════════════════════════════════╗`);
   console.log(`║   Mouse Share Server Running       ║`);
   console.log(`╚════════════════════════════════════╝`);
   console.log(`\nServer: http://localhost:${PORT}`);
+  console.log(`Network: http://0.0.0.0:${PORT}`);
   console.log(`Time: ${new Date().toLocaleString()}\n`);
 });
