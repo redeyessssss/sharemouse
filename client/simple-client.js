@@ -62,6 +62,9 @@ function hostLoop() {
   screen = robot.getScreenSize();
   active = true;
   
+  console.log(`  Screen: ${screen.width}x${screen.height}`);
+  console.log(`  Move mouse to edge to switch!\n`);
+  
   setInterval(() => {
     // Check if client is active
     const ac = Array.from(clients.entries()).find(([_, c]) => c.active);
@@ -103,6 +106,8 @@ function hostLoop() {
         active = false;
         c.active = true;
         
+        console.log(`  Switching to ${c.pos} client...`);
+        
         // Hide host cursor
         robot.moveMouse(screen.width + 500, screen.height + 500);
         
@@ -135,6 +140,7 @@ async function client() {
   socket.on('position-set', (d) => {
     myPos = d.position;
     log(`Position: ${myPos}`);
+    console.log('  Ready to receive control!\n');
   });
   
   socket.on('take-control', (d) => {
