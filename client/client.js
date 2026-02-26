@@ -3,7 +3,9 @@ import { io } from 'socket.io-client';
 import readline from 'readline';
 
 const SERVER_URL = process.env.SERVER_URL || 'http://localhost:3002';
-const EDGE_THRESHOLD = 10; // pixels from edge to trigger switch
+const EDGE_THRESHOLD = 5; // pixels from edge to trigger switch
+const SAFE_ZONE = 50; // pixels inside screen where mouse is placed after switch
+const SWITCH_COOLDOWN = 500; // milliseconds before allowing another switch
 const CHECK_INTERVAL = 16; // ~60fps
 
 const rl = readline.createInterface({
@@ -24,6 +26,7 @@ let clientTrackingInterval = null;
 
 // Host-specific state
 let connectedClients = new Map();
+let lastSwitchTime = 0;
 
 function question(prompt) {
   return new Promise((resolve) => {
@@ -87,8 +90,9 @@ async function startHost() {
     if (client) {
       client.active = false;
       isControlActive = true;
+      lastSwitchTime = Date.now(); // Set cooldown when returning
       
-      // Position mouse at the edge where it returned
+      // Position mouse at safe zone, not at edge
       const pos = getEdgePosition(client.position, data.x, data.y);
       robot.moveMouse(pos.x, pos.y);
       
@@ -109,6 +113,9 @@ function startHostTracking() {
   trackingInterval = setInterval(() => {
     if (!isControlActive) return;
     
+    const now = Date.now();
+    if (now - lastSwitchTime < SWITCH_COOLDOWN) return; // Cooldown period
+    
     const pos = robot.getMousePos();
     
     // Check each edge for client
@@ -122,14 +129,14 @@ function startHostTracking() {
         case 'right':
           if (pos.x >= screenSize.width - EDGE_THRESHOLD) {
             shouldSwitch = true;
-            entryX = 0;
+            entryX = SAFE_ZONE / screenSize.width; // Enter at safe zone, not edge
             entryY = pos.y / screenSize.height;
           }
           break;
         case 'left':
           if (pos.x <= EDGE_THRESHOLD) {
             shouldSwitch = true;
-            entryX = 1;
+            entryX = 1 - (SAFE_ZONE / screenSize.width); // Enter at safe zone from right
             entryY = pos.y / screenSize.height;
           }
           break;
@@ -137,14 +144,14 @@ function startHostTracking() {
           if (pos.y >= screenSize.height - EDGE_THRESHOLD) {
             shouldSwitch = true;
             entryX = pos.x / screenSize.width;
-            entryY = 0;
+            entryY = SAFE_ZONE / screenSize.height;
           }
           break;
         case 'top':
           if (pos.y <= EDGE_THRESHOLD) {
             shouldSwitch = true;
             entryX = pos.x / screenSize.width;
-            entryY = 1;
+            entryY = 1 - (SAFE_ZONE / screenSize.height);
           }
           break;
       }
@@ -152,6 +159,7 @@ function startHostTracking() {
       if (shouldSwitch) {
         isControlActive = false;
         client.active = true;
+        lastSwitchTime = now;
         socket.emit('switch-to-client', { clientId, entryX, entryY });
         log(`→ Control switched to ${client.position} client`);
         break;
@@ -236,8 +244,13 @@ function startClientTracking() {
     clearInterval(clientTrackingInterval);
   }
   
+  let lastReturnTime = 0;
+  
   clientTrackingInterval = setInterval(() => {
     if (!isControlActive) return;
+    
+    const now = Date.now();
+    if (now - lastReturnTime < SWITCH_COOLDOWN) return; // Cooldown
     
     const pos = robot.getMousePos();
     let shouldReturn = false;
@@ -247,14 +260,14 @@ function startClientTracking() {
       case 'right':
         if (pos.x <= EDGE_THRESHOLD) {
           shouldReturn = true;
-          exitX = 1;
+          exitX = 1 - (SAFE_ZONE / screenSize.width);
           exitY = pos.y / screenSize.height;
         }
         break;
       case 'left':
         if (pos.x >= screenSize.width - EDGE_THRESHOLD) {
           shouldReturn = true;
-          exitX = 0;
+          exitX = SAFE_ZONE / screenSize.width;
           exitY = pos.y / screenSize.height;
         }
         break;
@@ -262,20 +275,21 @@ function startClientTracking() {
         if (pos.y <= EDGE_THRESHOLD) {
           shouldReturn = true;
           exitX = pos.x / screenSize.width;
-          exitY = 1;
+          exitY = 1 - (SAFE_ZONE / screenSize.height);
         }
         break;
       case 'top':
         if (pos.y >= screenSize.height - EDGE_THRESHOLD) {
           shouldReturn = true;
           exitX = pos.x / screenSize.width;
-          exitY = 0;
+          exitY = SAFE_ZONE / screenSize.height;
         }
         break;
     }
     
     if (shouldReturn) {
       isControlActive = false;
+      lastReturnTime = now;
       clearInterval(clientTrackingInterval);
       socket.emit('return-to-host', { exitX, exitY });
       log(`← Returning control to host`);
@@ -289,13 +303,13 @@ function getEdgePosition(position, normalizedX, normalizedY) {
   
   switch (position) {
     case 'right':
-      return { x: screenSize.width - EDGE_THRESHOLD - 5, y };
+      return { x: screenSize.width - SAFE_ZONE, y };
     case 'left':
-      return { x: EDGE_THRESHOLD + 5, y };
+      return { x: SAFE_ZONE, y };
     case 'bottom':
-      return { x, y: screenSize.height - EDGE_THRESHOLD - 5 };
+      return { x, y: screenSize.height - SAFE_ZONE };
     case 'top':
-      return { x, y: EDGE_THRESHOLD + 5 };
+      return { x, y: SAFE_ZONE };
     default:
       return { x, y };
   }
