@@ -110,42 +110,60 @@ function startHostTracking() {
   screenSize = robot.getScreenSize();
   isControlActive = true;
   let lastPos = robot.getMousePos();
-  
-  // Track mouse clicks
-  const mouseState = { left: false, right: false, middle: false };
+  let lastSentPos = { x: 0, y: 0 };
+  let cursorLockedPosition = null; // Where we locked the cursor
   
   trackingInterval = setInterval(() => {
     const now = Date.now();
-    const pos = robot.getMousePos();
     
-    // If control is on a client, send mouse movements to that client
+    // Check if any client is active
     const activeClient = Array.from(connectedClients.entries()).find(([id, c]) => c.active);
+    
     if (activeClient) {
       const [clientId, client] = activeClient;
       
-      // Send continuous mouse updates to active client
-      if (pos.x !== lastPos.x || pos.y !== lastPos.y) {
-        socket.emit('mouse-move', {
-          clientId,
-          x: pos.x / screenSize.width,
-          y: pos.y / screenSize.height
-        });
-        lastPos = pos;
-      }
+      // When client is active:
+      // 1. Read physical mouse position
+      // 2. Send to client
+      // 3. Keep host cursor locked off-screen
       
-      // Check for mouse clicks
-      try {
-        const leftDown = robot.getMousePos(); // robotjs doesn't have direct button state
-        // We'll use a different approach - listen for actual clicks
-      } catch (e) {
-        // Ignore
+      const physicalPos = robot.getMousePos();
+      
+      // If cursor moved from locked position, send delta to client
+      if (cursorLockedPosition) {
+        const deltaX = physicalPos.x - cursorLockedPosition.x;
+        const deltaY = physicalPos.y - cursorLockedPosition.y;
+        
+        if (deltaX !== 0 || deltaY !== 0) {
+          // Calculate new position for client
+          const newX = lastSentPos.x + (deltaX / screenSize.width);
+          const newY = lastSentPos.y + (deltaY / screenSize.height);
+          
+          // Clamp to 0-1 range
+          lastSentPos.x = Math.max(0, Math.min(1, newX));
+          lastSentPos.y = Math.max(0, Math.min(1, newY));
+          
+          socket.emit('mouse-move', {
+            clientId,
+            x: lastSentPos.x,
+            y: lastSentPos.y
+          });
+          
+          // Re-lock cursor at same position
+          robot.moveMouse(cursorLockedPosition.x, cursorLockedPosition.y);
+        }
       }
       
       return; // Don't check for edge switching while client is active
     }
     
+    // Host has control - normal operation
+    cursorLockedPosition = null;
+    
     if (!isControlActive) return;
-    if (now - lastSwitchTime < SWITCH_COOLDOWN) return; // Cooldown period
+    if (now - lastSwitchTime < SWITCH_COOLDOWN) return;
+    
+    const pos = robot.getMousePos();
     
     // Check each edge for client
     for (const [clientId, client] of connectedClients) {
@@ -158,14 +176,14 @@ function startHostTracking() {
         case 'right':
           if (pos.x >= screenSize.width - EDGE_THRESHOLD) {
             shouldSwitch = true;
-            entryX = SAFE_ZONE / screenSize.width; // Enter at safe zone, not edge
+            entryX = SAFE_ZONE / screenSize.width;
             entryY = pos.y / screenSize.height;
           }
           break;
         case 'left':
           if (pos.x <= EDGE_THRESHOLD) {
             shouldSwitch = true;
-            entryX = 1 - (SAFE_ZONE / screenSize.width); // Enter at safe zone from right
+            entryX = 1 - (SAFE_ZONE / screenSize.width);
             entryY = pos.y / screenSize.height;
           }
           break;
@@ -190,27 +208,22 @@ function startHostTracking() {
         client.active = true;
         lastSwitchTime = now;
         
-        // Hide cursor on host by moving it off-screen
-        robot.moveMouse(screenSize.width + 100, screenSize.height + 100);
+        // Lock cursor at center of screen (invisible to user)
+        cursorLockedPosition = {
+          x: Math.floor(screenSize.width / 2),
+          y: Math.floor(screenSize.height / 2)
+        };
+        robot.moveMouse(cursorLockedPosition.x, cursorLockedPosition.y);
+        
+        // Initialize sent position
+        lastSentPos = { x: entryX, y: entryY };
         
         socket.emit('switch-to-client', { clientId, entryX, entryY });
-        log(`→ Control switched to ${client.position} client`);
+        log(`→ Control switched to ${client.position} client (cursor locked)`);
         break;
       }
     }
   }, CHECK_INTERVAL);
-  
-  // Setup mouse click listeners using iohook
-  setupMouseClickTracking();
-}
-
-function setupMouseClickTracking() {
-  // Note: robotjs doesn't support click detection
-  // For now, we'll add a note that clicks need to be implemented with a native addon
-  // Users can click on the host and it will work on host screen
-  // For full click forwarding, we'd need node-global-key-listener or similar
-  console.log('\n  Note: Mouse click forwarding requires additional setup');
-  console.log('  Currently only mouse movement is forwarded\n');
 }
 
 async function startClient() {
