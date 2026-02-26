@@ -92,7 +92,7 @@ async function startHost() {
       isControlActive = true;
       lastSwitchTime = Date.now(); // Set cooldown when returning
       
-      // Position mouse at safe zone, not at edge
+      // Position mouse at safe zone where it returned
       const pos = getEdgePosition(client.position, data.x, data.y);
       robot.moveMouse(pos.x, pos.y);
       
@@ -189,6 +189,10 @@ function startHostTracking() {
         isControlActive = false;
         client.active = true;
         lastSwitchTime = now;
+        
+        // Hide cursor on host by moving it off-screen
+        robot.moveMouse(screenSize.width + 100, screenSize.height + 100);
+        
         socket.emit('switch-to-client', { clientId, entryX, entryY });
         log(`→ Control switched to ${client.position} client`);
         break;
@@ -277,6 +281,17 @@ async function startClient() {
     robot.moveMouse(x, y);
   });
 
+  socket.on('release-control', () => {
+    isControlActive = false;
+    
+    // Hide cursor on client by moving it off-screen
+    if (screenSize) {
+      robot.moveMouse(screenSize.width + 100, screenSize.height + 100);
+    }
+    
+    log('○ Mouse control released');
+  });
+
   socket.on('host-disconnected', () => {
     log('✗ Host disconnected');
     cleanup();
@@ -341,6 +356,10 @@ function startClientTracking() {
       isControlActive = false;
       lastReturnTime = now;
       clearInterval(clientTrackingInterval);
+      
+      // Hide cursor on client before returning
+      robot.moveMouse(screenSize.width + 100, screenSize.height + 100);
+      
       socket.emit('return-to-host', { exitX, exitY });
       log(`← Returning control to host`);
     }
