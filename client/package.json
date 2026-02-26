@@ -1,10 +1,10 @@
 {
   "name": "mouse-share-client",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "type": "module",
-  "main": "client.js",
+  "main": "simple-client.js",
   "scripts": {
-    "start": "node client.js"
+    "start": "node simple-client.js"
   },
   "dependencies": {
     "robotjs": "^0.6.0",
