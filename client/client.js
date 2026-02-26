@@ -109,61 +109,56 @@ async function startHost() {
 function startHostTracking() {
   screenSize = robot.getScreenSize();
   isControlActive = true;
-  let lastPos = robot.getMousePos();
-  let lastSentPos = { x: 0, y: 0 };
-  let cursorLockedPosition = null; // Where we locked the cursor
+  let lastPhysicalPos = robot.getMousePos();
+  let clientCursorPos = { x: 0, y: 0 }; // Track where client cursor should be
   
   trackingInterval = setInterval(() => {
     const now = Date.now();
+    const currentPhysicalPos = robot.getMousePos();
     
     // Check if any client is active
     const activeClient = Array.from(connectedClients.entries()).find(([id, c]) => c.active);
     
     if (activeClient) {
-      const [clientId, client] = activeClient;
+      const [clientId] = activeClient;
       
-      // When client is active:
-      // 1. Read physical mouse position
-      // 2. Send to client
-      // 3. Keep host cursor locked off-screen
+      // Calculate mouse movement delta
+      const deltaX = currentPhysicalPos.x - lastPhysicalPos.x;
+      const deltaY = currentPhysicalPos.y - lastPhysicalPos.y;
       
-      const physicalPos = robot.getMousePos();
-      
-      // If cursor moved from locked position, send delta to client
-      if (cursorLockedPosition) {
-        const deltaX = physicalPos.x - cursorLockedPosition.x;
-        const deltaY = physicalPos.y - cursorLockedPosition.y;
+      if (deltaX !== 0 || deltaY !== 0) {
+        // Update client cursor position based on delta
+        clientCursorPos.x += deltaX / screenSize.width;
+        clientCursorPos.y += deltaY / screenSize.height;
         
-        if (deltaX !== 0 || deltaY !== 0) {
-          // Calculate new position for client
-          const newX = lastSentPos.x + (deltaX / screenSize.width);
-          const newY = lastSentPos.y + (deltaY / screenSize.height);
-          
-          // Clamp to 0-1 range
-          lastSentPos.x = Math.max(0, Math.min(1, newX));
-          lastSentPos.y = Math.max(0, Math.min(1, newY));
-          
-          socket.emit('mouse-move', {
-            clientId,
-            x: lastSentPos.x,
-            y: lastSentPos.y
-          });
-          
-          // Re-lock cursor at same position
-          robot.moveMouse(cursorLockedPosition.x, cursorLockedPosition.y);
-        }
+        // Clamp to 0-1 range
+        clientCursorPos.x = Math.max(0, Math.min(1, clientCursorPos.x));
+        clientCursorPos.y = Math.max(0, Math.min(1, clientCursorPos.y));
+        
+        // Send to client
+        socket.emit('mouse-move', {
+          clientId,
+          x: clientCursorPos.x,
+          y: clientCursorPos.y
+        });
+      }
+      
+      // Keep host cursor locked off-screen
+      if (currentPhysicalPos.x !== -1000 || currentPhysicalPos.y !== -1000) {
+        robot.moveMouse(-1000, -1000);
+        lastPhysicalPos = { x: -1000, y: -1000 };
+      } else {
+        lastPhysicalPos = currentPhysicalPos;
       }
       
       return; // Don't check for edge switching while client is active
     }
     
     // Host has control - normal operation
-    cursorLockedPosition = null;
+    lastPhysicalPos = currentPhysicalPos;
     
     if (!isControlActive) return;
     if (now - lastSwitchTime < SWITCH_COOLDOWN) return;
-    
-    const pos = robot.getMousePos();
     
     // Check each edge for client
     for (const [clientId, client] of connectedClients) {
@@ -174,30 +169,30 @@ function startHostTracking() {
       
       switch (client.position) {
         case 'right':
-          if (pos.x >= screenSize.width - EDGE_THRESHOLD) {
+          if (currentPhysicalPos.x >= screenSize.width - EDGE_THRESHOLD) {
             shouldSwitch = true;
             entryX = SAFE_ZONE / screenSize.width;
-            entryY = pos.y / screenSize.height;
+            entryY = currentPhysicalPos.y / screenSize.height;
           }
           break;
         case 'left':
-          if (pos.x <= EDGE_THRESHOLD) {
+          if (currentPhysicalPos.x <= EDGE_THRESHOLD) {
             shouldSwitch = true;
             entryX = 1 - (SAFE_ZONE / screenSize.width);
-            entryY = pos.y / screenSize.height;
+            entryY = currentPhysicalPos.y / screenSize.height;
           }
           break;
         case 'bottom':
-          if (pos.y >= screenSize.height - EDGE_THRESHOLD) {
+          if (currentPhysicalPos.y >= screenSize.height - EDGE_THRESHOLD) {
             shouldSwitch = true;
-            entryX = pos.x / screenSize.width;
+            entryX = currentPhysicalPos.x / screenSize.width;
             entryY = SAFE_ZONE / screenSize.height;
           }
           break;
         case 'top':
-          if (pos.y <= EDGE_THRESHOLD) {
+          if (currentPhysicalPos.y <= EDGE_THRESHOLD) {
             shouldSwitch = true;
-            entryX = pos.x / screenSize.width;
+            entryX = currentPhysicalPos.x / screenSize.width;
             entryY = 1 - (SAFE_ZONE / screenSize.height);
           }
           break;
@@ -208,19 +203,15 @@ function startHostTracking() {
         client.active = true;
         lastSwitchTime = now;
         
-        // Move cursor COMPLETELY off-screen (far outside visible area)
-        // This ensures clicks don't register on host screen
-        cursorLockedPosition = {
-          x: -1000,  // Far off-screen to the left
-          y: -1000   // Far off-screen to the top
-        };
-        robot.moveMouse(cursorLockedPosition.x, cursorLockedPosition.y);
+        // Initialize client cursor position
+        clientCursorPos = { x: entryX, y: entryY };
         
-        // Initialize sent position
-        lastSentPos = { x: entryX, y: entryY };
+        // Move host cursor off-screen and lock it
+        robot.moveMouse(-1000, -1000);
+        lastPhysicalPos = { x: -1000, y: -1000 };
         
         socket.emit('switch-to-client', { clientId, entryX, entryY });
-        log(`→ Control switched to ${client.position} client (cursor off-screen)`);
+        log(`→ Control switched to ${client.position} client`);
         break;
       }
     }
