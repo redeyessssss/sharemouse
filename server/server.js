@@ -2,9 +2,17 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import { fileURLToPath } from 'url';
+import { dirname, join } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
 
 const app = express();
 app.use(cors());
+
+// Serve static files from web directory
+app.use(express.static(join(__dirname, '../web')));
 
 const httpServer = createServer(app);
 const io = new Server(httpServer, {
