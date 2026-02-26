@@ -108,6 +108,17 @@ io.on('connection', (socket) => {
     }
   });
 
+  // Host sends mouse movements to active client
+  socket.on('mouse-move', ({ clientId, x, y }) => {
+    const otp = socket.data.otp;
+    const session = sessions.get(otp);
+    
+    if (session && session.hostId === socket.id && session.activeClientId === clientId) {
+      // Forward mouse movement to client
+      io.to(clientId).emit('mouse-move', { x, y });
+    }
+  });
+
   // Client returns control to host
   socket.on('return-to-host', ({ exitX, exitY }) => {
     const otp = socket.data.otp;

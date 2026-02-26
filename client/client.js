@@ -109,14 +109,31 @@ async function startHost() {
 function startHostTracking() {
   screenSize = robot.getScreenSize();
   isControlActive = true;
+  let lastPos = robot.getMousePos();
   
   trackingInterval = setInterval(() => {
-    if (!isControlActive) return;
-    
     const now = Date.now();
-    if (now - lastSwitchTime < SWITCH_COOLDOWN) return; // Cooldown period
-    
     const pos = robot.getMousePos();
+    
+    // If control is on a client, send mouse movements to that client
+    const activeClient = Array.from(connectedClients.entries()).find(([id, c]) => c.active);
+    if (activeClient) {
+      const [clientId, client] = activeClient;
+      
+      // Send continuous mouse updates to active client
+      if (pos.x !== lastPos.x || pos.y !== lastPos.y) {
+        socket.emit('mouse-move', {
+          clientId,
+          x: pos.x / screenSize.width,
+          y: pos.y / screenSize.height
+        });
+        lastPos = pos;
+      }
+      return; // Don't check for edge switching while client is active
+    }
+    
+    if (!isControlActive) return;
+    if (now - lastSwitchTime < SWITCH_COOLDOWN) return; // Cooldown period
     
     // Check each edge for client
     for (const [clientId, client] of connectedClients) {
@@ -225,6 +242,15 @@ async function startClient() {
     log(`✓ Mouse control activated (from ${myPosition})`);
     
     startClientTracking();
+  });
+
+  socket.on('mouse-move', (data) => {
+    if (!isControlActive) return;
+    
+    // Move mouse based on host's movements
+    const x = Math.round(data.x * screenSize.width);
+    const y = Math.round(data.y * screenSize.height);
+    robot.moveMouse(x, y);
   });
 
   socket.on('host-disconnected', () => {
